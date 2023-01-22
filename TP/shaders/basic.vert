@@ -19,13 +19,20 @@ layout(binding = 0) uniform Data {
     FrameData frame;
 };
 
+layout(binding = 2) buffer Instances {
+    Instance instances[];
+};
+
 uniform mat4 model;
+uniform float instancing;
 
 void main() {
-    const vec4 position = model * vec4(in_pos, 1.0);
+    mat4 aModel = (instancing != 0.f ? instances[gl_InstanceID].model : model);
+        
+    const vec4 position = aModel * vec4(in_pos, 1.0);
 
-    out_normal = normalize(mat3(model) * in_normal);
-    out_tangent = normalize(mat3(model) * in_tangent_bitangent_sign.xyz);
+    out_normal = normalize(mat3(aModel) * in_normal);
+    out_tangent = normalize(mat3(aModel) * in_tangent_bitangent_sign.xyz);
     out_bitangent = cross(out_tangent, out_normal) * (in_tangent_bitangent_sign.w > 0.0 ? 1.0 : -1.0);
 
     out_uv = in_uv;

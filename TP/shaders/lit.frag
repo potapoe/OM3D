@@ -26,7 +26,7 @@ layout(binding = 1) buffer PointLights {
     PointLight point_lights[];
 };
 
-const vec3 ambient = vec3(0.0);
+const vec3 ambient = vec3(0.2);
 
 void main() {
 #ifdef NORMAL_MAPPED

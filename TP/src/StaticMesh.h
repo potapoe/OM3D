@@ -4,6 +4,7 @@
 #include <graphics.h>
 #include <TypedBuffer.h>
 #include <Vertex.h>
+#include <shader_structs.h>
 
 #include <vector>
 
@@ -24,6 +25,13 @@ class StaticMesh : NonCopyable {
         StaticMesh(const MeshData& data);
 
         void draw() const;
+        void drawInstanced(size_t instancesCount) const;
+
+        glm::vec3 bbox_center;
+        float bbox_radius;
+
+        MeshData meshData;
+        size_t verticesCount;
 
     private:
         TypedBuffer<Vertex> _vertex_buffer;

@@ -19,3 +19,6 @@ struct PointLight {
     float padding_1;
 };
 
+struct Instance {
+    mat4 model;
+};

@@ -46,6 +46,6 @@ file(GLOB_RECURSE SHADER_FILES
 
 
 
-add_executable(TP ${SOURCE_FILES} ${EXTERNAL_FILES} ${SHADER_FILES})
+add_executable(TP ${SOURCE_FILES} ${EXTERNAL_FILES} ${SHADER_FILES} "src/OcclusionQuery.cpp")
 target_link_libraries(TP glfw)
 target_compile_options(TP PUBLIC ${COMPILE_OPTIONS})

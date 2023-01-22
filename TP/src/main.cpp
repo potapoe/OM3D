@@ -87,7 +87,7 @@ std::unique_ptr<Scene> create_default_scene() {
     auto scene = std::make_unique<Scene>();
 
     // Load default cube model
-    auto result = Scene::from_gltf(std::string(data_path) + "cube.glb");
+    auto result = Scene::from_gltf(std::string(data_path) + "forest.glb");
     ALWAYS_ASSERT(result.is_ok, "Unable to load default scene");
     scene = std::move(result.value);
 
@@ -156,6 +156,7 @@ int main(int, char**) {
 
         // Render the scene
         {
+            scene_view.sortObjects();
             main_framebuffer.bind();
             scene_view.render();
         }
@@ -184,6 +185,10 @@ int main(int, char**) {
                     scene_view = SceneView(scene.get());
                 }
             }
+            ImGui::Checkbox("Instancing", &scene->useInstancing);
+            int minVerticesForQuery = static_cast<int>(scene->minVerticesForQuery);
+            ImGui::SliderInt("minVerticesForQuery", &minVerticesForQuery, 0, 20000);
+            scene->minVerticesForQuery = minVerticesForQuery;
         }
         imgui.finish();
 
