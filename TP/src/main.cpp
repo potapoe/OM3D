@@ -57,9 +57,15 @@ void process_inputs(GLFWwindow* window, Camera& camera) {
         if(glfwGetKey(window, 'A') == GLFW_PRESS) {
             movement -= camera.right();
         }
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            movement += camera.up();
+        }
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+            movement -= camera.up();
+        }
 
         float speed = 10.0f;
-        if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+        if(glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
             speed *= 10.0f;
         }
 
@@ -82,15 +88,8 @@ void process_inputs(GLFWwindow* window, Camera& camera) {
     mouse_pos = new_mouse_pos;
 }
 
-
-std::unique_ptr<Scene> create_default_scene() {
-    auto scene = std::make_unique<Scene>();
-
-    // Load default cube model
-    auto result = Scene::from_gltf(std::string(data_path) + "cube.glb");
-    ALWAYS_ASSERT(result.is_ok, "Unable to load default scene");
-    scene = std::move(result.value);
-
+static void add_lights_to_scene(std::unique_ptr<Scene>& scene)
+{
     // Add lights
     {
         PointLight light;
@@ -106,6 +105,45 @@ std::unique_ptr<Scene> create_default_scene() {
         light.set_radius(50.0f);
         scene->add_object(std::move(light));
     }
+    {
+        PointLight light;
+        light.set_position(glm::vec3(-3.5f, 8.0f, 7.5f));
+        light.set_color(glm::vec3(20.0f, 10.0f, 0.0f));
+        light.set_radius(100.0f);
+        scene->add_object(std::move(light));
+    }
+    {
+        PointLight light;
+        light.set_position(glm::vec3(-3.f, 8.0f, 16.f));
+        light.set_color(glm::vec3(20.0f, 10.0f, 0.0f));
+        light.set_radius(100.0f);
+        scene->add_object(std::move(light));
+    }
+    {
+        PointLight light;
+        light.set_position(glm::vec3(13.f, 8.0f, 14.f));
+        light.set_color(glm::vec3(20.0f, 10.0f, 0.0f));
+        light.set_radius(100.0f);
+        scene->add_object(std::move(light));
+    }
+    {
+        PointLight light;
+        light.set_position(glm::vec3(-1.f, 7.5f, 2.f));
+        light.set_color(glm::vec3(0.0f, 5.0f, 0.0f));
+        light.set_radius(100.0f);
+        scene->add_object(std::move(light));
+    }
+}
+
+std::unique_ptr<Scene> create_default_scene() {
+    auto scene = std::make_unique<Scene>();
+
+    // Load default cube model
+    auto result = Scene::from_gltf(std::string(data_path) + "cube.glb");
+    ALWAYS_ASSERT(result.is_ok, "Unable to load default scene");
+    scene = std::move(result.value);
+
+    add_lights_to_scene(scene);
 
     return scene;
 }
@@ -129,8 +167,24 @@ int main(int, char**) {
     glfwSwapInterval(1); // Enable vsync
     init_graphics();
 
+    glEnable(GL_DEPTH_TEST);
+
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
+
     ImGuiRenderer imgui(window);
 
+    // Load default program
+    auto empty_material_program = Program::from_files("lit.frag", "basic.vert");
+    auto textured_material_program = Program::from_files("lit.frag", "basic.vert", { "TEXTURED" });
+    auto textured_normal_mapped_material_program = Program::from_files("lit.frag", "basic.vert", std::array<std::string, 2>{"TEXTURED", "NORMAL_MAPPED"});
+
+    Material::set_empty_material_program(empty_material_program);
+    Material::set_textured_material_program(textured_material_program);
+    Material::set_textured_normal_mapped_material_program(textured_normal_mapped_material_program);
+
+    // Load scene
     std::unique_ptr<Scene> scene = create_default_scene();
     SceneView scene_view(scene.get());
 
@@ -142,6 +196,59 @@ int main(int, char**) {
     Framebuffer main_framebuffer(&depth, std::array{&lit});
     Framebuffer tonemap_framebuffer(nullptr, std::array{&color});
 
+    // Define all defered shadeding program
+    auto diffuse_pass_program = Program::from_files("diffuse_pass.frag", "screen.vert");
+    auto debug_albedo_pass_program = Program::from_files("debug_albedo_pass.frag", "screen.vert");
+    auto debug_normal_pass_program = Program::from_files("debug_normal_pass.frag", "screen.vert");
+    auto debug_depth_pass_program = Program::from_files("debug_depth_pass.frag", "screen.vert");
+    auto debug_position_pass_program = Program::from_files("debug_position_pass.frag", "screen.vert");
+
+    auto pointlight_pass_program = Program::from_files("pointlight_pass.frag", "basic.vert");
+    pointlight_pass_program->set_uniform("screen_x", window_size.x);
+    pointlight_pass_program->set_uniform("screen_y", window_size.y);
+
+    std::array<std::shared_ptr<Program>, 6> debug_views = {
+        diffuse_pass_program,           // 0
+        debug_albedo_pass_program,      // 1
+        debug_normal_pass_program,      // 2
+        debug_depth_pass_program,       // 3
+        debug_position_pass_program,    // 4
+        diffuse_pass_program            // 5
+    };
+    int debug_view_id = 0;
+    std::shared_ptr<Program> final_pass_program = debug_views[debug_view_id];
+
+    // Define G-buffer
+    Texture g_albedo(window_size, ImageFormat::RGBA16_FLOAT);
+    Texture g_normal(window_size, ImageFormat::RGBA8_UNORM);
+    Framebuffer g_framebuffer(&depth, std::array{ &g_albedo, &g_normal });
+
+    // Load sphere volume
+    auto result = Scene::from_gltf(std::string(data_path) + "sphere.glb");
+    ALWAYS_ASSERT(result.is_ok, "Unable to load sphere volume scene");
+    std::shared_ptr<StaticMesh> sphere_mesh = result.value->extract_object(0).mesh;
+
+    auto material = std::make_shared<Material>();
+    material->set_blend_mode(BlendMode::Add);
+    material->set_depth_test_mode(DepthTestMode::Reversed);
+    material->set_program(pointlight_pass_program);
+    SceneObject light_volume(sphere_mesh, material);
+
+    // Transparency
+    bool near_object_transparency = false;
+    empty_material_program->set_uniform<u32>("near_object_transparency", near_object_transparency);
+    textured_material_program->set_uniform<u32>("near_object_transparency", near_object_transparency);
+    textured_normal_mapped_material_program->set_uniform<u32>("near_object_transparency", near_object_transparency);
+    int transparency_patch_size = 5;
+    empty_material_program->set_uniform<u32>("transparency_patch_size", transparency_patch_size);
+    textured_material_program->set_uniform<u32>("transparency_patch_size", transparency_patch_size);
+    textured_normal_mapped_material_program->set_uniform<u32>("transparency_patch_size", transparency_patch_size);
+    bool gradual_object_transparency = false;
+    empty_material_program->set_uniform<u32>("gradual_object_transparency", gradual_object_transparency);
+    textured_material_program->set_uniform<u32>("gradual_object_transparency", gradual_object_transparency);
+    textured_normal_mapped_material_program->set_uniform<u32>("gradual_object_transparency", gradual_object_transparency);
+
+    // Render loop
     for(;;) {
         glfwPollEvents();
         if(glfwWindowShouldClose(window) || glfwGetKey(window, GLFW_KEY_ESCAPE)) {
@@ -156,10 +263,48 @@ int main(int, char**) {
 
         // Render the scene
         {
-            main_framebuffer.bind();
+            // G-buffer pass
+            g_framebuffer.bind(true);
             scene_view.render();
-        }
 
+            // Plug G-buffer as inputs
+            g_albedo.bind(10);
+            g_normal.bind(11);
+
+            // Diffuse+Ambient pass
+
+            main_framebuffer.bind(false);
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            if (debug_view_id != 5)
+            {
+                glDisable(GL_DEPTH_TEST);
+                final_pass_program->bind();
+                scene_view.force_render_triangle();
+                glEnable(GL_DEPTH_TEST);
+            }
+            else
+            {
+                // Clear to black to only render Point light
+                glClearColor(0.f, 0.f, 0.f, 0.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glClearColor(0.5f, 0.7f, 0.8f, 0.0f);
+            }
+
+            // Point Light pass
+            if (debug_view_id == 0 || debug_view_id == 5)
+            {
+                glFrontFace(GL_CW); // only render backface of lights volume
+                glDepthMask(GL_FALSE); // only depth test without writing
+
+                scene_view.render_lights(light_volume);
+
+                glDepthMask(GL_TRUE);
+                glFrontFace(GL_CCW);
+            }
+
+        }
+        
         // Apply a tonemap in compute shader
         {
             tonemap_program->bind();
@@ -170,8 +315,9 @@ int main(int, char**) {
         // Blit tonemap result to screen
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         tonemap_framebuffer.blit();
-
+        
         // GUI
+        glDisable(GL_CULL_FACE);
         imgui.start();
         {
             char buffer[1024] = {};
@@ -181,11 +327,53 @@ int main(int, char**) {
                     std::cerr << "Unable to load scene (" << buffer << ")" << std::endl;
                 } else {
                     scene = std::move(result.value);
+                    add_lights_to_scene(scene);
                     scene_view = SceneView(scene.get());
+                }
+            }
+            ImGui::RadioButton("Full", &debug_view_id, 0);
+
+            ImGui::RadioButton("Albedo", &debug_view_id, 1); ImGui::SameLine();
+            ImGui::RadioButton("Normal", &debug_view_id, 2); ImGui::SameLine();
+            ImGui::RadioButton("Depth", &debug_view_id, 3);
+
+            ImGui::RadioButton("Position", &debug_view_id, 4); ImGui::SameLine();
+            ImGui::RadioButton("PointLights only", &debug_view_id, 5);
+            final_pass_program = debug_views[debug_view_id];
+
+            ImGui::Separator();
+
+            // Transparency
+            bool tmp_near_object_transparency = near_object_transparency;
+            ImGui::Checkbox("Near object transparency", &tmp_near_object_transparency);
+            if (tmp_near_object_transparency != near_object_transparency)
+            {
+                near_object_transparency = tmp_near_object_transparency;
+                empty_material_program->set_uniform<u32>("near_object_transparency", near_object_transparency);
+                textured_material_program->set_uniform<u32>("near_object_transparency", near_object_transparency);
+                textured_normal_mapped_material_program->set_uniform<u32>("near_object_transparency", near_object_transparency);
+            }
+
+            if (near_object_transparency)
+            {
+                ImGui::SliderInt("Patch size", &transparency_patch_size, 1, 16);
+                empty_material_program->set_uniform<u32>("transparency_patch_size", transparency_patch_size);
+                textured_material_program->set_uniform<u32>("transparency_patch_size", transparency_patch_size);
+                textured_normal_mapped_material_program->set_uniform<u32>("transparency_patch_size", transparency_patch_size);
+
+                bool tmp_gradual_object_transparency = gradual_object_transparency;
+                ImGui::Checkbox("Gradual object transparency", &tmp_gradual_object_transparency);
+                if (tmp_gradual_object_transparency != gradual_object_transparency)
+                {
+                    gradual_object_transparency = tmp_gradual_object_transparency;
+                    empty_material_program->set_uniform<u32>("gradual_object_transparency", gradual_object_transparency);
+                    textured_material_program->set_uniform<u32>("gradual_object_transparency", gradual_object_transparency);
+                    textured_normal_mapped_material_program->set_uniform<u32>("gradual_object_transparency", gradual_object_transparency);
                 }
             }
         }
         imgui.finish();
+        glEnable(GL_CULL_FACE);
 
         glfwSwapBuffers(window);
     }

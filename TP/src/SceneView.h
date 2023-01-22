@@ -15,6 +15,9 @@ class SceneView {
 
         void render() const;
 
+        void force_render_triangle() const;
+        void render_lights(SceneObject& light_object) const;
+
     private:
         const Scene* _scene = nullptr;
         Camera _camera;

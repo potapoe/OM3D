@@ -12,6 +12,7 @@ namespace OM3D {
 enum class BlendMode {
     None,
     Alpha,
+    Add,
 };
 
 enum class DepthTestMode {
@@ -43,8 +44,15 @@ class Material {
         static Material textured_material();
         static Material textured_normal_mapped_material();
 
+        static void set_empty_material_program(std::shared_ptr<Program> p);
+        static void set_textured_material_program(std::shared_ptr<Program> p);
+        static void set_textured_normal_mapped_material_program(std::shared_ptr<Program> p);
 
     private:
+        static std::shared_ptr<Program> empty_material_program;
+        static std::shared_ptr<Program> textured_material_program;
+        static std::shared_ptr<Program> textured_normal_mapped_material_program;
+
         std::shared_ptr<Program> _program;
         std::vector<std::pair<u32, std::shared_ptr<Texture>>> _textures;
 

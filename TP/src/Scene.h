@@ -18,9 +18,13 @@ class Scene : NonMovable {
         static Result<std::unique_ptr<Scene>> from_gltf(const std::string& file_name);
 
         void render(const Camera& camera) const;
+        void force_render_triangle(const Camera& camera) const;
 
         void add_object(SceneObject obj);
         void add_object(PointLight obj);
+
+        SceneObject& extract_object(int index);
+        void render_lights(const Camera& camera, SceneObject& light_object) const;
 
     private:
         std::vector<SceneObject> _objects;

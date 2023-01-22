@@ -18,5 +18,16 @@ void SceneView::render() const {
         _scene->render(_camera);
     }
 }
+void SceneView::force_render_triangle() const {
+    if (_scene) {
+        _scene->force_render_triangle(_camera);
+    }
+}
+
+void SceneView::render_lights(SceneObject& light_object) const {
+    if (_scene) {
+        _scene->render_lights(_camera, light_object);
+    }
+}
 
 }
